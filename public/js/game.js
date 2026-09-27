@@ -6,6 +6,10 @@
  *   - les pièces (forme, rotation, déplacement, chute),
  *   - les lignes, le score, le niveau et la fin de partie.
  *
+ * Le jeu ne connaît pas à l'avance la taille du plateau ni les pièces :
+ * on les lui donne au démarrage (voir configure()). C'est ce qui permet
+ * d'avoir le mode classique ET le mode Pentominos Lab avec le même code.
+ *
  * Quand quelque chose d'intéressant se passe (rotation, pose, ligne…),
  * il "émet un événement" via la fonction onEvent(nom, données).
  * Le fichier main.js écoute ces événements pour déclencher sons et effets.
@@ -40,7 +44,14 @@ const PIECES = {
       [0, 0, 0]],
 };
 
-const PIECE_TYPES = Object.keys(PIECES);
+/** Définitions des pièces du mode classique : id, couleur, 4 rotations. */
+function classicPieceDefs() {
+  return Object.keys(PIECES).map(id => {
+    const r0 = PIECES[id];
+    const r1 = rotateMatrix(r0, 1), r2 = rotateMatrix(r1, 1), r3 = rotateMatrix(r2, 1);
+    return { id, color: CONFIG.COLORS[id], rotations: [r0, r1, r2, r3] };
+  });
+}
 
 /* --- "Wall kicks" SRS -------------------------------------------------
  * Si une rotation est bloquée (contre un mur ou d'autres blocs), le jeu
@@ -70,6 +81,21 @@ const KICKS = {
     '3>0': [[0, 0], [1, 0], [-2, 0], [1, -2], [-2, 1]],
     '0>3': [[0, 0], [-1, 0], [2, 0], [-1, 2], [2, -1]],
   },
+  /* Table maison pour les pentominos (boîte 5×5).
+   * Une pièce de 5 cases peut dépasser jusqu'à 2 cases de son centre :
+   * on teste donc des décalages de 1 PUIS de 2 cases, à droite, à gauche
+   * et vers le haut. L'ordre compte : on préfère le plus petit décalage.
+   * Écrite pour la rotation horaire ; pour l'anti-horaire, on inverse x
+   * (voir rotate()). */
+  PENTA: [
+    [0, 0],
+    [1, 0], [-1, 0],     // un pas à droite / à gauche
+    [0, 1],              // un pas vers le haut (se relever du sol)
+    [1, 1], [-1, 1],     // en diagonale vers le haut
+    [2, 0], [-2, 0],     // deux pas (près d'un mur, une barre de 5 dépasse de 2)
+    [0, 2],              // deux pas vers le haut
+    [0, -1],             // un pas vers le bas (glisser dans un trou)
+  ],
 };
 
 /** Tourne une matrice carrée d'un quart de tour (dir = 1 horaire, -1 anti-horaire). */
@@ -89,11 +115,31 @@ class Game {
   /** @param {(name: string, data?: object) => void} onEvent */
   constructor(onEvent) {
     this.onEvent = onEvent || (() => {});
-    this.totalRows = CONFIG.ROWS + CONFIG.HIDDEN_ROWS;
     this.state = 'idle'; // 'idle' | 'playing' | 'paused' | 'won' | 'over'
+    this.piece = null;
+    this.nextType = null;
+    this.configure(CONFIG.MODES.classic, classicPieceDefs());
+  }
+
+  /**
+   * Choisit le mode : taille du plateau, table de kicks et liste des pièces.
+   * @param {object} mode       un élément de CONFIG.MODES
+   * @param {object[]} pieceDefs [{ id, color, rotations: [4 matrices] }]
+   */
+  configure(mode, pieceDefs) {
+    this.mode = mode;
+    this.cols = mode.cols;
+    this.rows = mode.rows;
+    this.hidden = mode.hidden;
+    this.totalRows = mode.rows + mode.hidden;
+    this.defs = {};
+    this.colors = {};
+    pieceDefs.forEach(d => { this.defs[d.id] = d; this.colors[d.id] = d.color; });
+    this.pieceIds = pieceDefs.map(d => d.id);
     this.board = this.createBoard();
     this.piece = null;
     this.nextType = null;
+    this.state = 'idle';
   }
 
   /* ------------------------------------------------------------------
@@ -131,18 +177,18 @@ class Game {
 
   /** Grille vide : tableau de lignes, chaque case vaut null ou une lettre de pièce. */
   createBoard() {
-    return Array.from({ length: this.totalRows }, () => Array(CONFIG.COLS).fill(null));
+    return Array.from({ length: this.totalRows }, () => Array(this.cols).fill(null));
   }
 
   /* ------------------------------------------------------------------
    * Tirage des pièces : système du "sac de 7"
-   * On met les 7 pièces dans un sac, on les mélange et on les pioche une
+   * On met toutes les pièces (7 en classique) dans un sac, on les mélange et on les pioche une
    * par une. Résultat : jamais de longue attente pour une pièce donnée.
    * ------------------------------------------------------------------ */
 
   drawFromBag() {
     if (this.bag.length === 0) {
-      this.bag = PIECE_TYPES.slice();
+      this.bag = this.pieceIds.slice();
       for (let i = this.bag.length - 1; i > 0; i--) { // mélange de Fisher-Yates
         const j = Math.floor(Math.random() * (i + 1));
         [this.bag[i], this.bag[j]] = [this.bag[j], this.bag[i]];
@@ -155,14 +201,17 @@ class Game {
   spawn() {
     const type = this.nextType;
     this.nextType = this.drawFromBag();
-    const matrix = PIECES[type].map(row => row.slice());
+    const matrix = this.defs[type].rotations[0];
+    // Dernière ligne occupée de la pièce (pour la placer juste au bord du plateau visible)
+    let lowest = 0;
+    matrix.forEach((row, r) => { if (row.some(v => v)) lowest = r; });
     this.piece = {
       type,
       matrix,
       rot: 0,
-      x: Math.floor((CONFIG.COLS - matrix.length) / 2),
-      // La ligne la plus basse de la pièce arrive juste sur la 1re ligne visible
-      y: CONFIG.HIDDEN_ROWS - 1,
+      x: Math.floor((this.cols - matrix.length) / 2),
+      // Le bas de la pièce arrive sur la 1re ligne visible, le reste est dans la zone cachée
+      y: this.hidden - lowest,
     };
     this.gravityTimer = 0;
     this.lockTimer = 0;
@@ -188,7 +237,7 @@ class Game {
         if (!matrix[r][c]) continue;
         const bx = x + c;
         const by = y + r;
-        if (bx < 0 || bx >= CONFIG.COLS || by >= this.totalRows) return true;
+        if (bx < 0 || bx >= this.cols || by >= this.totalRows) return true;
         if (by >= 0 && this.board[by][bx]) return true;
       }
     }
@@ -229,11 +278,16 @@ class Game {
   rotate(dir) {
     if (this.state !== 'playing' || !this.piece) return false;
     const p = this.piece;
-    if (p.type === 'O') return false; // le carré ne change pas en tournant
+    if (this.mode.kicks === 'srs' && p.type === 'O') return false; // le carré ne change pas en tournant
 
     const newRot = (p.rot + dir + 4) % 4;
-    const matrix = rotateMatrix(p.matrix, dir);
-    const kicks = KICKS[p.type === 'I' ? 'I' : 'JLSTZ'][`${p.rot}>${newRot}`];
+    const matrix = this.defs[p.type].rotations[newRot]; // rotations pré-calculées
+    let kicks;
+    if (this.mode.kicks === 'srs') {
+      kicks = KICKS[p.type === 'I' ? 'I' : 'JLSTZ'][`${p.rot}>${newRot}`];
+    } else {
+      kicks = KICKS.PENTA.map(([kx, ky]) => [kx * dir, ky]); // miroir pour l'anti-horaire
+    }
 
     for (const [kx, ky] of kicks) {
       const nx = p.x + kx;
@@ -337,7 +391,7 @@ class Game {
     this.emit('lock', { cells, hard: fromHardDrop });
 
     // Pièce entièrement posée dans la zone invisible → partie perdue
-    if (cells.every(c => c.y < CONFIG.HIDDEN_ROWS)) {
+    if (cells.every(c => c.y < this.hidden)) {
       this.gameOver();
       return;
     }
@@ -360,7 +414,7 @@ class Game {
     // Nouveau plateau = lignes vides en haut + lignes conservées
     const kept = [];
     this.board.forEach((row, r) => { if (!full.includes(r)) kept.push({ row, oldIndex: r }); });
-    const newBoard = full.map(() => Array(CONFIG.COLS).fill(null));
+    const newBoard = full.map(() => Array(this.cols).fill(null));
 
     // drops[i] = de combien de cases la ligne i (nouvel index) est descendue.
     // Sert à animer la retombée des blocs.

@@ -13,6 +13,9 @@ const ui = {
   score: $('score'), lines: $('lines'), target: $('target'), level: $('level'),
   time: $('time'), progress: $('progress'),
   overlay: $('overlay'), picker: $('target-picker'), bestStart: $('best-start'),
+  modePicker: $('mode-picker'), modeDesc: $('mode-desc'), modeName: $('mode-name'),
+  labOptions: $('lab-options'), setSelect: $('set-select'), startWarning: $('start-warning'),
+  btnStart: $('btn-start'),
   winTime: $('win-time'), winRecord: $('win-record'), winScore: $('win-score'),
   winLines: $('win-lines'), winBest: $('win-best'),
   overLines: $('over-lines'), overTime: $('over-time'),
@@ -23,8 +26,18 @@ const sound = new Sound();
 const renderer = new Renderer($('board'), $('next'));
 const game = new Game(handleGameEvent);
 
+const editor = new Editor(renderer, setId => {
+  // Retour de l'éditeur : on sélectionne le set qu'on vient de modifier
+  if (setId) { labSetId = setId; saveText('tetris.labSet', setId); }
+  showMenu();
+});
+
+/* --- Choix mémorisés entre deux visites ------------------------------ */
 let target = loadNumber('tetris.target', CONFIG.DEFAULT_TARGET);
 if (!CONFIG.TARGET_OPTIONS.includes(target)) target = CONFIG.DEFAULT_TARGET;
+let modeId = loadText('tetris.mode', CONFIG.DEFAULT_MODE);
+if (!CONFIG.MODES[modeId]) modeId = CONFIG.DEFAULT_MODE;
+let labSetId = loadText('tetris.labSet', null);
 
 /* ---------------------------------------------------------------------
  * Petits utilitaires
@@ -53,7 +66,18 @@ function saveNumber(key, value) {
   try { localStorage.setItem(key, String(value)); } catch (e) { /* stockage indisponible */ }
 }
 
-const bestKey = t => `tetris.best.${t}`;
+function loadText(key, fallback) {
+  try { return localStorage.getItem(key) ?? fallback; } catch (e) { return fallback; }
+}
+
+function saveText(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { /* stockage indisponible */ }
+}
+
+/** Clé du record : un record par mode, par objectif (et par set en mode Lab). */
+function bestKey(t) {
+  return modeId === 'lab' ? `tetris.best.lab.${labSetId}.${t}` : `tetris.best.classic.${t}`;
+}
 
 /** Petite pulsation CSS sur un élément (ex. quand le score change). */
 function bump(el) {
@@ -76,40 +100,106 @@ function showScreen(name) {
   }
 }
 
-/** Boutons de choix de l'objectif (10 / 20 / 40 lignes). */
-function buildTargetPicker() {
-  ui.picker.innerHTML = '';
-  CONFIG.TARGET_OPTIONS.forEach(n => {
+/* ---------------------------------------------------------------------
+ * Menu principal
+ * --------------------------------------------------------------------- */
+
+/** Petit utilitaire : une rangée de boutons dont un seul est "sélectionné". */
+function buildChoiceButtons(container, items, selected, onPick) {
+  container.innerHTML = '';
+  items.forEach(({ value, label }) => {
     const b = document.createElement('button');
     b.type = 'button';
-    b.textContent = `${n} lignes`;
-    b.className = n === target ? 'selected' : '';
-    b.addEventListener('click', () => {
-      target = n;
-      saveNumber('tetris.target', n);
-      buildTargetPicker();
-    });
-    ui.picker.appendChild(b);
+    b.textContent = label;
+    b.className = value === selected ? 'selected' : '';
+    b.addEventListener('click', () => { onPick(value); buildMenu(); });
+    container.appendChild(b);
   });
+}
+
+/** Le set de pièces choisi pour le mode Lab (ou null s'il n'y en a aucun). */
+function currentLabSet() {
+  const sets = loadSets();
+  return sets.find(s => s.id === labSetId) || sets[0] || null;
+}
+
+/**
+ * Prépare le jeu pour le mode choisi (taille du plateau + pièces).
+ * Le plateau change de largeur tout de suite : on voit la différence dans le menu.
+ */
+function applyMode() {
+  const mode = CONFIG.MODES[modeId];
+  if (modeId === 'lab') {
+    const set = currentLabSet();
+    game.configure(mode, set && set.pieces.length ? setToPieceDefs(set) : []);
+  } else {
+    game.configure(mode, classicPieceDefs());
+  }
+  renderer.resize(game);
+  renderer.clearEffects();
+  ui.modeName.textContent = modeId === 'lab' ? 'pentominos lab' : 'classique';
+}
+
+/** (Re)construit tout le contenu du menu principal. */
+function buildMenu() {
+  const mode = CONFIG.MODES[modeId];
+
+  buildChoiceButtons(ui.modePicker,
+    Object.values(CONFIG.MODES).map(m => ({ value: m.id, label: m.name })),
+    modeId,
+    v => { modeId = v; saveText('tetris.mode', v); });
+  ui.modeDesc.textContent = mode.description;
+
+  buildChoiceButtons(ui.picker,
+    CONFIG.TARGET_OPTIONS.map(n => ({ value: n, label: `${n} lignes` })),
+    target,
+    v => { target = v; saveNumber('tetris.target', v); });
+
+  // Options du mode Lab : liste des sets
+  ui.labOptions.hidden = modeId !== 'lab';
+  let canStart = true;
+  if (modeId === 'lab') {
+    const sets = loadSets();
+    const set = currentLabSet();
+    labSetId = set ? set.id : null;
+    ui.setSelect.innerHTML = '';
+    sets.forEach(s => {
+      const o = document.createElement('option');
+      o.value = s.id;
+      o.textContent = `${s.name} · ${s.pieces.length} pièce${s.pieces.length > 1 ? 's' : ''}`;
+      ui.setSelect.appendChild(o);
+    });
+    if (set) ui.setSelect.value = set.id;
+    canStart = !!set && set.pieces.length >= 1;
+  }
+
+  ui.startWarning.textContent = canStart ? '' : 'Ce set est vide : ouvre l\'éditeur et crée au moins 1 pièce.';
+  ui.btnStart.disabled = !canStart;
+
   const best = loadNumber(bestKey(target), null);
   ui.bestStart.textContent = best ? `Record : ${formatTime(best, true)}` : 'Pas encore de record';
   ui.target.textContent = target;
+
+  applyMode();
 }
 
 function showMenu() {
-  game.state = 'idle';
-  game.piece = null;
-  renderer.clearEffects();
-  buildTargetPicker();
+  buildMenu();
   showScreen('start');
 }
 
 function startGame() {
+  if (ui.btnStart.disabled && game.state === 'idle') return; // set vide en mode Lab
   sound.unlock();
-  renderer.clearEffects();
+  applyMode(); // recharge les pièces (le set a pu changer dans l'éditeur)
   resetInput();
   game.start(target);
   showScreen(null);
+}
+
+function openEditor() {
+  showScreen(null);
+  editor.open(labSetId);
 }
 
 function updateSoundButton() {
@@ -234,6 +324,10 @@ function updateInput(dt) {
 const GAME_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Space'];
 
 document.addEventListener('keydown', e => {
+  // Pas de raccourcis de jeu quand on tape dans un champ ou quand l'éditeur est ouvert
+  const tag = e.target.tagName;
+  if (editor.isOpen || tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+
   if (GAME_KEYS.includes(e.code)) e.preventDefault();
   sound.unlock();
 
@@ -285,7 +379,14 @@ window.addEventListener('blur', () => {
 });
 
 /* --- Boutons à la souris --------------------------------------------- */
-$('btn-start').addEventListener('click', startGame);
+ui.btnStart.addEventListener('click', startGame);
+$('btn-editor').addEventListener('click', openEditor);
+ui.setSelect.addEventListener('change', e => {
+  labSetId = e.target.value;
+  saveText('tetris.labSet', labSetId);
+  buildMenu();
+  e.target.blur(); // rend les flèches/Entrée au jeu
+});
 $('btn-resume').addEventListener('click', () => game.togglePause());
 document.querySelectorAll('[data-action="restart"]').forEach(b => b.addEventListener('click', startGame));
 document.querySelectorAll('[data-action="menu"]').forEach(b => b.addEventListener('click', showMenu));
@@ -334,15 +435,14 @@ function frame(now) {
   game.update(dt);
 
   renderer.draw(game);
-  renderer.drawNext(game.state === 'idle' ? null : game.nextType);
+  renderer.drawNext(game);
   updateHud();
 
   requestAnimationFrame(frame);
 }
 
 /* --- Lancement ------------------------------------------------------- */
-window.addEventListener('resize', () => renderer.resize());
-renderer.resize();
+window.addEventListener('resize', () => renderer.resize(game));
 updateSoundButton();
 showMenu();
 requestAnimationFrame(frame);

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Tetris Sprint</title>
+  <title>Tetris Sprint · Pentominos Lab</title>
 
   <!-- Police "Outfit" (facultative : si pas d'internet, une police système prend le relais) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -13,11 +13,11 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
-  <main class="layout">
+  <main class="layout" id="layout">
 
     <!-- ============ Panneau gauche : statistiques ============ -->
     <aside class="panel">
-      <h1 class="logo">TETRIS<span>sprint</span></h1>
+      <h1 class="logo">TETRIS<span id="mode-name">classique</span></h1>
 
       <div class="card">
         <div class="label">Score</div>
@@ -49,11 +49,24 @@
       <!-- Écrans superposés au plateau (un seul visible à la fois) -->
       <div class="overlay" id="overlay">
 
+        <!-- Menu principal : choix du mode, de l'objectif et (mode Lab) du set -->
         <div class="screen" id="screen-start">
-          <h2>Prêt ?</h2>
-          <p class="muted">Détruis le nombre de lignes choisi, le plus vite possible.</p>
-          <div class="target-picker" id="target-picker"><!-- boutons générés en JS --></div>
+          <div class="mode-picker" id="mode-picker"><!-- 2 boutons générés en JS --></div>
+          <p class="muted" id="mode-desc"></p>
+
+          <div class="menu-block">
+            <div class="label">Objectif</div>
+            <div class="target-picker" id="target-picker"><!-- boutons générés en JS --></div>
+          </div>
+
+          <div class="menu-block" id="lab-options">
+            <div class="label">Set de pièces</div>
+            <select class="select" id="set-select"></select>
+            <button class="btn btn-ghost btn-small" id="btn-editor" type="button">✏️ Éditeur de pièces</button>
+          </div>
+
           <p class="best" id="best-start"></p>
+          <p class="warning" id="start-warning"></p>
           <button class="btn" id="btn-start">Jouer</button>
           <p class="hint">ou appuie sur <kbd>Entrée</kbd></p>
         </div>
@@ -116,11 +129,68 @@
 
   </main>
 
-  <!-- Ordre important : réglages → logique → son → dessin → chef d'orchestre -->
+  <!-- ================================================================
+       Éditeur de pentominos (plein écran, caché par défaut)
+       ================================================================ -->
+  <section class="editor" id="editor" hidden>
+    <header class="editor-head">
+      <button class="btn btn-ghost btn-small" id="ed-back" type="button">← Retour au menu</button>
+      <h1 class="logo">PENTOMINOS<span>lab · éditeur de pièces</span></h1>
+    </header>
+
+    <div class="editor-body">
+
+      <!-- Colonne 1 : les sets -->
+      <div class="card ed-sets">
+        <div class="label">Mes sets</div>
+        <select class="select" id="ed-set-select"></select>
+        <div class="ed-row">
+          <button class="btn-mini" id="ed-set-new" type="button">+ Nouveau set</button>
+          <button class="btn-mini danger" id="ed-set-delete" type="button">Supprimer le set</button>
+        </div>
+
+        <label class="label" for="ed-set-name">Nom du set</label>
+        <input class="input" id="ed-set-name" maxlength="30" autocomplete="off">
+
+        <div class="label">Pièces du set · <span id="ed-piece-count">0</span></div>
+        <div class="ed-pieces" id="ed-pieces"><!-- miniatures générées en JS --></div>
+        <p class="hint">Clique une pièce pour la modifier.</p>
+      </div>
+
+      <!-- Colonne 2 : la grille de dessin -->
+      <div class="card ed-draw">
+        <div class="label" id="ed-draw-title">Nouvelle pièce</div>
+        <div class="ed-grid" id="ed-grid"><!-- 25 cases générées en JS --></div>
+        <p class="ed-status" id="ed-status"></p>
+
+        <div class="label">Couleur</div>
+        <div class="ed-colors" id="ed-colors"><!-- pastilles générées en JS --></div>
+
+        <div class="ed-row">
+          <button class="btn-mini" id="ed-clear" type="button">Effacer</button>
+          <button class="btn-mini" id="ed-cancel" type="button">Annuler</button>
+          <button class="btn btn-small" id="ed-save" type="button">Ajouter au set</button>
+        </div>
+      </div>
+
+      <!-- Colonne 3 : les 4 rotations calculées automatiquement -->
+      <div class="card ed-rot">
+        <div class="label">Rotations générées</div>
+        <div class="ed-rotations" id="ed-rotations"><!-- 4 aperçus générés en JS --></div>
+        <p class="hint">Le jeu calcule tout seul les 4 positions (0°, 90°, 180°, 270°) en faisant
+          tourner ton dessin autour du centre de la grille.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- Ordre important : réglages → logique → pentominos → son → dessin → éditeur → chef d'orchestre -->
   <script src="js/config.js"></script>
   <script src="js/game.js"></script>
+  <script src="js/pentominos.js"></script>
   <script src="js/sound.js"></script>
   <script src="js/renderer.js"></script>
+  <script src="js/editor.js"></script>
   <script src="js/main.js"></script>
 </body>
 </html>

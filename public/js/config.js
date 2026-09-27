@@ -6,14 +6,44 @@
  * ===================================================================== */
 
 const CONFIG = {
-  /* --- Plateau ------------------------------------------------------- */
-  COLS: 10,          // largeur du plateau (en cases)
-  ROWS: 20,          // hauteur visible du plateau (en cases)
-  HIDDEN_ROWS: 2,    // lignes invisibles au-dessus, où les pièces apparaissent
+  /* --- Modes de jeu et taille du plateau ---------------------------
+   * cols   : largeur du plateau (en cases)
+   * rows   : hauteur visible (en cases)
+   * hidden : lignes invisibles au-dessus, où les pièces apparaissent
+   * kicks  : table de "wall kicks" utilisée ('srs' = Tetris officiel,
+   *          'penta' = table adaptée aux pièces 5×5, voir game.js)
+   */
+  MODES: {
+    classic: {
+      id: 'classic',
+      name: 'Tetris classique',
+      description: 'Plateau 10×20 et les 7 tétrominos officiels.',
+      cols: 10, rows: 20, hidden: 2, kicks: 'srs',
+    },
+    lab: {
+      id: 'lab',
+      name: 'Pentominos Lab',
+      description: 'Plateau 12×20 et tes propres pièces de 5 cases.',
+      // Plus large (12) et plus de lignes cachées (4) : une pièce 5×5
+      // a besoin de place pour apparaître et tourner sans perdre injustement.
+      cols: 12, rows: 20, hidden: 4, kicks: 'penta',
+    },
+  },
+  DEFAULT_MODE: 'classic',
 
   /* --- Mode "simple" : objectif de lignes ---------------------------- */
   TARGET_OPTIONS: [10, 20, 40], // choix proposés sur l'écran d'accueil
   DEFAULT_TARGET: 20,           // objectif sélectionné par défaut
+
+  /* --- Éditeur de pentominos ----------------------------------------- */
+  LAB_GRID: 5,              // taille de la grille de dessin (5×5)
+  LAB_PIECE_SIZE: 5,        // nombre exact de cases d'une pièce
+  LAB_MAX_PIECES_PER_SET: 20,
+  // Couleurs proposées dans l'éditeur (on peut aussi choisir librement)
+  LAB_COLORS: [
+    '#5ce1ff', '#ffd95c', '#c38bff', '#6ef3a5', '#ff6b8b', '#6b9bff',
+    '#ffa65c', '#ff8fd8', '#b8f35c', '#5cffd6', '#ff5c5c', '#e0e4ff',
+  ],
 
   /* --- Vitesse ------------------------------------------------------- */
   LINES_PER_LEVEL: 4,   // on monte d'un niveau toutes les N lignes
@@ -27,7 +57,7 @@ const CONFIG = {
   MAX_LOCK_RESETS: 15,     // nb max de fois où bouger/tourner relance ce délai
 
   /* --- Score --------------------------------------------------------- */
-  SCORE_LINES: [0, 100, 300, 500, 800], // pour 0, 1, 2, 3, 4 lignes (× niveau)
+  SCORE_LINES: [0, 100, 300, 500, 800, 1200], // pour 0 à 5 lignes (× niveau) — 5 possible avec un pentomino
   SCORE_SOFT_DROP: 1,                   // points par case en chute douce
   SCORE_HARD_DROP: 2,                   // points par case en chute instantanée
 
@@ -41,6 +71,7 @@ const CONFIG = {
   },
 
   /* --- Couleurs des pièces (palette néon pastel) --------------------- */
+  // (mode classique ; en mode Lab, chaque pièce a sa propre couleur)
   COLORS: {
     I: '#5ce1ff', // cyan
     O: '#ffd95c', // jaune

@@ -63,19 +63,24 @@ class Renderer {
    * Taille : le plateau s'adapte à la hauteur de la fenêtre
    * ------------------------------------------------------------------ */
 
-  resize() {
+  /** @param {Game} game — on lit la taille du plateau dans le jeu (10 ou 12 colonnes) */
+  resize(game) {
+    this.cols = game.cols;
+    this.rows = game.rows;
+    this.hidden = game.hidden;
     const available = window.innerHeight - 90;
-    this.cell = Math.max(18, Math.min(38, Math.floor(available / CONFIG.ROWS)));
+    this.cell = Math.max(18, Math.min(38, Math.floor(available / this.rows)));
     this.dpr = window.devicePixelRatio || 1;
 
-    const w = this.cell * CONFIG.COLS;
-    const h = this.cell * CONFIG.ROWS;
+    const w = this.cell * this.cols;
+    const h = this.cell * this.rows;
     this.setupCanvas(this.canvas, this.ctx, w, h);
 
-    const nextSize = this.cell * 4.2;
-    this.setupCanvas(this.nextCanvas, this.nextCtx, nextSize, nextSize * 0.7);
+    // Boîte "Suivante" assez grande pour une pièce 5×5
+    this.setupCanvas(this.nextCanvas, this.nextCtx, this.cell * 4.6, this.cell * 3.6);
 
     this.sprites.clear();
+    this.lastNext = undefined; // force le redessin de la pièce suivante
   }
 
   /** Canvas net sur les écrans haute résolution (Retina, etc.). */
@@ -128,9 +133,12 @@ class Renderer {
     return c;
   }
 
-  /** spriteSize : taille de l'image source (utile pour réduire un bloc sans recréer d'image). */
-  drawBlock(ctx, type, x, y, size = this.cell, alpha = 1, spriteSize = size) {
-    const sprite = this.getSprite(CONFIG.COLORS[type], spriteSize);
+  /**
+   * Dessine un bloc d'une couleur donnée.
+   * spriteSize : taille de l'image source (utile pour réduire un bloc sans recréer d'image).
+   */
+  drawBlock(ctx, color, x, y, size = this.cell, alpha = 1, spriteSize = size) {
+    const sprite = this.getSprite(color, spriteSize);
     ctx.globalAlpha = alpha;
     ctx.drawImage(sprite, x, y, size, size);
     ctx.globalAlpha = 1;
@@ -170,9 +178,10 @@ class Renderer {
     const ctx = this.ctx;
     const cell = this.cell;
     const now = performance.now();
-    const W = cell * CONFIG.COLS;
-    const H = cell * CONFIG.ROWS;
-    const hidden = CONFIG.HIDDEN_ROWS;
+    const W = cell * this.cols;
+    const H = cell * this.rows;
+    const hidden = this.hidden;
+    const colorOf = type => game.colors[type] || '#ffffff';
 
     // On retire les effets terminés
     this.effects = this.effects.filter(e => now - e.start < e.duration);
@@ -192,8 +201,8 @@ class Renderer {
       const offset = drop * (1 - fallProgress); // en cases, diminue jusqu'à 0
       const y = (r - hidden - offset) * cell;
       const row = game.board[r];
-      for (let c = 0; c < CONFIG.COLS; c++) {
-        if (row[c]) this.drawBlock(ctx, row[c], c * cell, y);
+      for (let c = 0; c < this.cols; c++) {
+        if (row[c]) this.drawBlock(ctx, colorOf(row[c]), c * cell, y);
       }
     }
 
@@ -206,7 +215,7 @@ class Renderer {
         const y = (row - hidden) * cell;
         cells.forEach((type, c) => {
           const s = cell * scale;
-          if (s > 0.5) this.drawBlock(ctx, type, c * cell + (cell - s) / 2, y + (cell - s) / 2, s, 1 - t, cell);
+          if (type && s > 0.5) this.drawBlock(ctx, colorOf(type), c * cell + (cell - s) / 2, y + (cell - s) / 2, s, 1 - t, cell);
         });
         ctx.fillStyle = `rgba(255, 255, 255, ${0.75 * Math.pow(1 - t, 2)})`;
         roundRectPath(ctx, 1, y + 1, W - 2, cell - 2, cell * 0.2);
@@ -217,7 +226,7 @@ class Renderer {
     // --- 3. Traînée du hard drop (colonne lumineuse qui s'estompe)
     for (const e of this.effects.filter(e => e.type === 'trail')) {
       const t = clamp01((now - e.start) / e.duration);
-      const color = CONFIG.COLORS[e.data.type];
+      const color = colorOf(e.data.type);
       // Pour chaque colonne : du haut de la pièce au départ jusqu'au haut de la pièce à l'arrivée
       const cols = {};
       e.data.fromCells.forEach(({ x, y }) => { cols[x] = Math.min(cols[x] ?? Infinity, y); });
@@ -237,7 +246,7 @@ class Renderer {
 
     // --- 4. Pièce fantôme (où la pièce va atterrir) + pièce active
     if (game.piece && (game.state === 'playing' || game.state === 'paused')) {
-      const color = CONFIG.COLORS[game.piece.type];
+      const color = colorOf(game.piece.type);
       const ghostY = game.ghostY();
       for (const { x, y } of game.pieceCells(game.piece, ghostY)) {
         if (y < hidden) continue;
@@ -253,9 +262,9 @@ class Renderer {
 
       // La pièce pâlit très légèrement pendant le délai de verrouillage
       const lockFade = 1 - 0.25 * clamp01(game.lockTimer / CONFIG.LOCK_DELAY);
-      for (const { x, y, type } of game.pieceCells()) {
+      for (const { x, y } of game.pieceCells()) {
         if (y < hidden) continue;
-        this.drawBlock(ctx, type, x * cell, (y - hidden) * cell, cell, lockFade);
+        this.drawBlock(ctx, color, x * cell, (y - hidden) * cell, cell, lockFade);
       }
     }
 
@@ -277,11 +286,11 @@ class Renderer {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    for (let c = 1; c < CONFIG.COLS; c++) {
+    for (let c = 1; c < this.cols; c++) {
       ctx.moveTo(c * this.cell + 0.5, 0);
       ctx.lineTo(c * this.cell + 0.5, H);
     }
-    for (let r = 1; r < CONFIG.ROWS; r++) {
+    for (let r = 1; r < this.rows; r++) {
       ctx.moveTo(0, r * this.cell + 0.5);
       ctx.lineTo(W, r * this.cell + 0.5);
     }
@@ -289,26 +298,48 @@ class Renderer {
   }
 
   /* ------------------------------------------------------------------
-   * Aperçu de la pièce suivante (centré dans sa boîte)
+   * Aperçu d'une pièce centrée dans un petit canvas
+   * (boîte "Suivante", et aussi les miniatures de l'éditeur)
    * ------------------------------------------------------------------ */
 
-  drawNext(type) {
-    const ctx = this.nextCtx;
-    const W = parseFloat(this.nextCanvas.style.width);
-    const H = parseFloat(this.nextCanvas.style.height);
+  /** Pièce suivante du jeu. */
+  drawNext(game) {
+    const type = game.state === 'idle' ? null : game.nextType;
+    // on évite de redessiner si rien n'a changé
+    if (this.lastNext === type && this.lastNextCell === this.cell) return;
+    this.lastNext = type;
+    this.lastNextCell = this.cell;
+    const def = type && game.defs[type];
+    this.drawMatrix(this.nextCanvas, this.nextCtx, def ? def.rotations[0] : null, def ? def.color : null, this.cell * 0.9);
+  }
+
+  /**
+   * Dessine une matrice (0/1) centrée dans un canvas déjà dimensionné.
+   * La taille des blocs s'adapte pour que la pièce tienne toujours.
+   */
+  drawMatrix(canvas, ctx, matrix, color, maxBlock) {
+    const W = parseFloat(canvas.style.width);
+    const H = parseFloat(canvas.style.height);
     ctx.clearRect(0, 0, W, H);
-    if (!type) return;
+    if (!matrix) return;
 
     // On ne garde que les lignes/colonnes réellement occupées
-    const m = PIECES[type];
-    const rows = m.map((row, r) => row.some(v => v) ? r : -1).filter(r => r >= 0);
-    const cols = m[0].map((_, c) => m.some(row => row[c]) ? c : -1).filter(c => c >= 0);
-    const size = Math.floor(this.cell * 0.9);
+    const rows = matrix.map((row, r) => row.some(v => v) ? r : -1).filter(r => r >= 0);
+    const cols = matrix[0].map((_, c) => matrix.some(row => row[c]) ? c : -1).filter(c => c >= 0);
+    const size = Math.floor(Math.min(maxBlock, (W * 0.9) / cols.length, (H * 0.9) / rows.length));
     const offX = (W - cols.length * size) / 2;
     const offY = (H - rows.length * size) / 2;
 
     rows.forEach((r, i) => cols.forEach((c, j) => {
-      if (m[r][c]) this.drawBlock(ctx, type, offX + j * size, offY + i * size, size);
+      if (matrix[r][c]) this.drawBlock(ctx, color, offX + j * size, offY + i * size, size);
     }));
+  }
+
+  /** Prépare un petit canvas (miniature) et y dessine une pièce. */
+  drawThumbnail(canvas, matrix, color, w, h) {
+    this.dpr = window.devicePixelRatio || 1;
+    const ctx = canvas.getContext('2d');
+    this.setupCanvas(canvas, ctx, w, h);
+    this.drawMatrix(canvas, ctx, matrix, color, w / 3);
   }
 }
