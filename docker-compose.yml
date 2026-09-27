@@ -1,0 +1,7 @@
+services:
+  tetris:
+    build: .
+    container_name: tetris
+    ports:
+      - "8080:80"
+    restart: unless-stopped

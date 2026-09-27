@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tetris Sprint</title>
+
+  <!-- Police "Outfit" (facultative : si pas d'internet, une police système prend le relais) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <main class="layout">
+
+    <!-- ============ Panneau gauche : statistiques ============ -->
+    <aside class="panel">
+      <h1 class="logo">TETRIS<span>sprint</span></h1>
+
+      <div class="card">
+        <div class="label">Score</div>
+        <div class="value" id="score">0</div>
+      </div>
+
+      <div class="card">
+        <div class="label">Lignes</div>
+        <div class="value"><span id="lines">0</span><small> / <span id="target">20</span></small></div>
+        <div class="progress"><div class="progress-fill" id="progress"></div></div>
+      </div>
+
+      <div class="card-row">
+        <div class="card">
+          <div class="label">Niveau</div>
+          <div class="value" id="level">1</div>
+        </div>
+        <div class="card">
+          <div class="label">Temps</div>
+          <div class="value mono" id="time">0:00.0</div>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ Plateau de jeu ============ -->
+    <section class="board-wrap">
+      <canvas id="board"></canvas>
+
+      <!-- Écrans superposés au plateau (un seul visible à la fois) -->
+      <div class="overlay" id="overlay">
+
+        <div class="screen" id="screen-start">
+          <h2>Prêt ?</h2>
+          <p class="muted">Détruis le nombre de lignes choisi, le plus vite possible.</p>
+          <div class="target-picker" id="target-picker"><!-- boutons générés en JS --></div>
+          <p class="best" id="best-start"></p>
+          <button class="btn" id="btn-start">Jouer</button>
+          <p class="hint">ou appuie sur <kbd>Entrée</kbd></p>
+        </div>
+
+        <div class="screen" id="screen-pause">
+          <h2>Pause</h2>
+          <button class="btn" id="btn-resume">Reprendre</button>
+          <p class="hint"><kbd>P</kbd> pour reprendre · <kbd>Échap</kbd> pour quitter</p>
+        </div>
+
+        <div class="screen" id="screen-win">
+          <h2 class="win-title">Objectif atteint !</h2>
+          <div class="big-time mono" id="win-time">0:00.00</div>
+          <p class="record" id="win-record">Nouveau record !</p>
+          <div class="summary">
+            <div><span class="label">Score</span><strong id="win-score">0</strong></div>
+            <div><span class="label">Lignes</span><strong id="win-lines">0</strong></div>
+            <div><span class="label">Record</span><strong class="mono" id="win-best">–</strong></div>
+          </div>
+          <button class="btn" data-action="restart">Rejouer</button>
+          <button class="btn btn-ghost" data-action="menu">Menu</button>
+        </div>
+
+        <div class="screen" id="screen-over">
+          <h2>Partie terminée</h2>
+          <p class="muted">Le plateau est plein. On retente ?</p>
+          <div class="summary">
+            <div><span class="label">Lignes</span><strong id="over-lines">0</strong></div>
+            <div><span class="label">Temps</span><strong class="mono" id="over-time">0:00.0</strong></div>
+          </div>
+          <button class="btn" data-action="restart">Rejouer</button>
+          <button class="btn btn-ghost" data-action="menu">Menu</button>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ============ Panneau droit : suivante, commandes, son ============ -->
+    <aside class="panel">
+      <div class="card">
+        <div class="label">Suivante</div>
+        <canvas id="next"></canvas>
+      </div>
+
+      <div class="card controls">
+        <div class="label">Commandes</div>
+        <ul>
+          <li><span><kbd>←</kbd><kbd>→</kbd></span> Déplacer</li>
+          <li><span><kbd>↑</kbd></span> Tourner</li>
+          <li><span><kbd>Z</kbd></span> Tourner ↺</li>
+          <li><span><kbd>↓</kbd></span> Chute douce</li>
+          <li><span><kbd>Espace</kbd></span> Hard drop</li>
+          <li><span><kbd>P</kbd></span> Pause</li>
+          <li><span><kbd>M</kbd></span> Son on/off</li>
+        </ul>
+      </div>
+
+      <button class="sound-toggle" id="sound-toggle" type="button"></button>
+    </aside>
+
+  </main>
+
+  <!-- Ordre important : réglages → logique → son → dessin → chef d'orchestre -->
+  <script src="js/config.js"></script>
+  <script src="js/game.js"></script>
+  <script src="js/sound.js"></script>
+  <script src="js/renderer.js"></script>
+  <script src="js/main.js"></script>
+</body>
+</html>
